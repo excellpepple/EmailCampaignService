@@ -1,12 +1,8 @@
 import os
 import json
-from supabase import Client, create_client
 import boto3
-from pydantic import BaseModel, ValidationError
-from .Exceptions import ContactListEmpty, TableValidationError, Error
-from botocore.exceptions import ClientError
 
-from .Schemas import Contact, Campaign
+from Schemas import Contact, Campaign
 import logging
 import jinja2
 from bs4 import BeautifulSoup
@@ -77,7 +73,7 @@ def send_email(contact: Contact, campaign: Campaign, ses):
 
 def handler(event, context):
     failures = []
-    ses = boto3.client("ses")
+    ses = boto3.client("ses", region_name="us-east-2") #TODO: Make sure stack is running on us-east-2
     for record in event["Records"]:
         try:
             body = json.loads(record["body"])

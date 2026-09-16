@@ -1,19 +1,11 @@
-"""
-Expecting a campaign Event
-Campaign{
-    - id
-    - title
-    - body
-    - tags
-}
-"""
+
 import os
 import json
 from supabase import Client, create_client
 import boto3
 from pydantic import BaseModel, ValidationError
-from .Exceptions import ContactListEmpty, TableValidationError, Error
-from .Schemas import Contact, Campaign
+from Exceptions import ContactListEmpty, TableValidationError, Error
+from Schemas import Contact, Campaign
 import logging
 
 
@@ -60,15 +52,20 @@ def create_campaign(campaign: Campaign):
         os.environ.get("SUPABASE_URL"),
         os.environ.get("SUPABASE_KEY")
     )
+    logger.info("Creating campaign %s", campaign.id)
+    logger.info("DB Client created")
     sqs = boto3.client("sqs")
     email_queue_url = os.environ.get("EMAIL_QUEUE_URL")
 
-    response = supabase.table("contacts").select("*").execute()
+    response = supabase.table("contact").select("*").execute()
+    logger.info(response)
     if response.data is None:
+        logger.error("Unable to retrieve a response from database")
         raise TableValidationError("Unable to retrieve a response from database")
 
-    contact_list = response["data"]
+    contact_list = response.data
     if not contact_list:
+        logger.error("Unable to retrieve a response from database")
         raise ContactListEmpty("Failed to find contacts in database")
 
     batch = []
@@ -77,6 +74,19 @@ def create_campaign(campaign: Campaign):
         if not contact.subscribed or contact.shouldDelete:
             continue #Skipping contact
 
+        #filter out tags if campaign has a tag
+        if campaign.tags:
+            has_tags = False
+            for tag in campaign.tags:
+                if tag in contact.tags:
+                    logger.info(f"Found tag {tag} in campaign {campaign.id} for {contact.email}")
+                    has_tags = True
+                    break
+            if not has_tags:
+                continue
+
+
+        logger.info(f"Processing contact {contact.email}")
         batch.append({
             "Id": contact.id,
             "MessageBody": json.dumps({
@@ -86,20 +96,23 @@ def create_campaign(campaign: Campaign):
         })
 
         if len(batch) == 10:
+            logger.info("Bath ready for SES")
             response = sqs.send_message_batch(
                 QueueUrl=email_queue_url,
                 Entries=batch,
             )
-
+            logger.info(f"Response: {response}")
             batch = []
     if batch:
+        logger.info("Sending last batch for SES")
         response = sqs.send_message_batch(
             QueueUrl=email_queue_url,
             Entries=batch,
         )
+        logger.info(f"Response: {response}")
 
 
-def lambda_handler(event, context):
+def handler(event, context):
     for record in event["Records"]:
         try:
             body = json.loads(record["body"])
@@ -126,24 +139,12 @@ def lambda_handler(event, context):
                 })
             }
         except ContactListEmpty as e:
-            logger.warning(f"Failed to create a campaign for {campaign.id} because contact list is empty")
-            return {
-                "statusCode": 200,
-                "body": json.dumps({
-                    "message": "No message sent contact list is empty",
-                })
-            }
+            logger.warning(f"Failed to create a campaign for {campaign.id} because contact list is empty error: {str(e)}")
+
 
         except Exception as e:
-            logger.error(f"Something went wrong with creating a campaign for {campaign.id}")
-            return {
-                "statusCode": 400,
-                "body": json.dumps(
-                    {
-                        "error": "Failed to create campaign",
-                    }
-                )
-            }
+            logger.error(f"Something went wrong with creating a campaign for {campaign.id} error: {str(e)}")
+            
 
     return {
         "statusCode": 200,

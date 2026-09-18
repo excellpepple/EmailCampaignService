@@ -13,6 +13,14 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 def send_batch_with_retry(sqs, queue_url, entries, max_retries=5):
+    """
+    Send a batch of messages to SQS with retry logic.
+    :param sqs:
+    :param queue_url:
+    :param entries:
+    :param max_retries:
+    :return: None
+    """
     remaining = entries
 
     for attempt in range(max_retries):
@@ -48,6 +56,11 @@ def send_batch_with_retry(sqs, queue_url, entries, max_retries=5):
 
 
 def create_campaign(campaign: Campaign):
+    """
+    Create a campaign and send it to all contacts in the database
+    :param campaign:
+    :return:
+    """
     supabase: Client = create_client(
         os.environ.get("SUPABASE_URL"),
         os.environ.get("SUPABASE_KEY")
@@ -113,6 +126,12 @@ def create_campaign(campaign: Campaign):
 
 
 def handler(event, context):
+    """
+    Lambda function to handle campaign creation
+    :param event:
+    :param context:
+    :return:
+    """
     for record in event["Records"]:
         try:
             body = json.loads(record["body"])

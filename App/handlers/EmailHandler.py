@@ -9,67 +9,12 @@ from bs4 import BeautifulSoup
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+from handlers.Utils import send_email
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-def format_message(message:str, contact: Contact):
-    envionment = jinja2.Environment()
-    template = envionment.from_string(message)
-    return template.render(name=contact.name)
 
-def send_email(contact: Contact, campaign: Campaign, ses):
-    sender = os.environ["EMAIL_SENDER"]
-    recipient = str(contact.email)
-
-    # Render the HTML with the contact's information
-    message = format_message(campaign.body, contact)
-
-    # Convert HTML to plain text
-    message_txt = BeautifulSoup(message,"html.parser").get_text(separator="\n", strip=True)
-
-    # Build MIME email
-    email = MIMEMultipart("alternative")
-
-    email["From"] = sender
-    email["To"] = recipient
-    email["Subject"] = campaign.title
-
-    # email["List-Unsubscribe"] = (
-    #     f"<https://iheartpizza.biz/unsubscribe?token={unsubscribe_token}>"
-    # )
-    # Plain-text version
-    email.attach(
-        MIMEText(
-            message_txt,
-            "plain",
-            "utf-8"
-        )
-    )
-
-    # HTML version
-    email.attach(
-        MIMEText(
-            message,
-            "html",
-            "utf-8"
-        )
-    )
-
-    response = ses.send_raw_email(
-        Source=sender,
-        Destinations=[recipient],
-        RawMessage={
-            "Data": email.as_bytes()
-        }
-    )
-
-    logger.info(
-        "Email sent to %s, SES message: %s",
-        recipient,
-        response["MessageId"]
-    )
-
-    return response["MessageId"]
 
 def handler(event, context):
     failures = []
